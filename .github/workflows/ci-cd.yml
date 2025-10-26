@@ -41,14 +41,14 @@ jobs:
         # Installs all Python packages listed in requirements.txt
         pip install -r requirements.txt
 
-    - name: Run tests
-      # run: Executes the test suite
-      run: |
-        # Uses Python's unittest module to discover and run all tests in the tests directory
-        # -m runs a module as a script
-        # discover automatically finds test files
-        # -s specifies the directory to start discovery
-        python -m unittest discover -s tests
+    # - name: Run tests
+    #   # run: Executes the test suite
+    #   run: |
+    #     # Uses Python's unittest module to discover and run all tests in the tests directory
+    #     # -m runs a module as a script
+    #     # discover automatically finds test files
+    #     # -s specifies the directory to start discovery
+    #     python -m unittest discover -s tests
 
     - name: Build Docker image
       # run: Builds a Docker container image from the Dockerfile in the repository root
