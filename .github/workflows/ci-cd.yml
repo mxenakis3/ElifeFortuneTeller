@@ -19,6 +19,14 @@ jobs:
     # runs-on: Specifies the type of virtual machine (runner) to execute the job on
     runs-on: ubuntu-latest  # Uses the latest Ubuntu runner provided by GitHub
 
+    # permissions: Specifies the GitHub token permissions for this job
+    permissions:
+      # id-token: write - Required for OIDC authentication with AWS
+      # Allows GitHub Actions to request an OIDC token to assume an AWS IAM role
+      id-token: write
+      # contents: read - Allows the workflow to read repository contents
+      contents: read
+
     # steps: A sequence of tasks that will be executed as part of this job
     steps:
     # uses: Runs a pre-built GitHub Action from the marketplace or a repository
@@ -41,6 +49,20 @@ jobs:
         # Installs all Python packages listed in requirements.txt
         pip install -r requirements.txt
 
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v2 # github action (attempts to create role w/ identity provider)
+      with:
+        role-to-assume: arn:aws:iam::195794488914:role/githubActionsContainerRole
+        aws-region: us-east-1
+    
+    # Verify that OIDC authentication worked and check assumed role
+    - name: Verify AWS Identity
+      run: |
+        echo "Checking AWS identity..."
+        # aws sts get-caller-identity returns the AWS account, user ID, and ARN of the assumed role
+        # This confirms that the OIDC authentication was successful
+        aws sts get-caller-identity
+      
     # - name: Run tests
     #   # run: Executes the test suite
     #   run: |
@@ -50,9 +72,4 @@ jobs:
     #     # -s specifies the directory to start discovery
     #     python -m unittest discover -s tests
 
-    - name: Build Docker image
-      # run: Builds a Docker container image from the Dockerfile in the repository root
-      run: docker build -t my-app:latest .
-      # -t tags the image with the name "my-app" and tag "latest"
-      # . specifies the build context (current directory)
-  
+   
