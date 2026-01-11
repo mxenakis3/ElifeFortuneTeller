@@ -1,0 +1,61 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "DynamoDBAccess",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:GetItem",
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:DeleteItem",
+        "dynamodb:Query",
+        "dynamodb:Scan",
+        "dynamodb:BatchGetItem",
+        "dynamodb:BatchWriteItem"
+      ],
+      "Resource": [
+        "arn:aws:dynamodb:*:*:table/fortune-teller-*",
+        "arn:aws:dynamodb:*:*:table/fortune-teller-*/index/*"
+      ]
+    },
+    {
+      "Sid": "CloudWatchLogsAccess",
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+      ],
+      "Resource": "arn:aws:logs:*:*:log-group:/aws/lambda/fortune-teller-*:*"
+    },
+    {
+      "Sid": "CognitoReadAccess",
+      "Effect": "Allow",
+      "Action": [
+        "cognito-idp:GetUser",
+        "cognito-idp:ListUsers",
+        "cognito-idp:AdminGetUser",
+        "cognito-idp:AdminListGroupsForUser"
+      ],
+      "Resource": "arn:aws:cognito-idp:*:*:userpool/*"
+    },
+    {
+      "Sid": "APIGatewayInvoke",
+      "Effect": "Allow",
+      "Action": [
+        "execute-api:Invoke",
+        "execute-api:ManageConnections"
+      ],
+      "Resource": "arn:aws:execute-api:*:*:*"
+    },
+    {
+      "Sid": "XRayAccess",
+      "Effect": "Allow",
+      "Action": [
+        "xray:PutTraceSegments",
+        "xray:PutTelemetryRecords"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

@@ -1,0 +1,323 @@
+# Terraform Infrastructure Deployment Workflow
+# Deploys and manages AWS infrastructure using Terraform
+
+name: Terraform Infrastructure
+
+# Trigger on changes to infrastructure code or manual dispatch
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'infra/**'
+      - '.github/workflows/terraform-infrastructure.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'infra/**'
+      - '.github/workflows/terraform-infrastructure.yml'
+  workflow_dispatch:  # Allows manual triggering from GitHub UI
+
+# Environment variables used across all jobs
+env:
+  AWS_REGION: us-east-1
+  TF_VERSION: 1.5.0
+
+jobs:
+  # ============================================================================
+  # Job 1: Deploy Terraform Backend (S3 + DynamoDB)
+  # This runs FIRST and only when backend files change or on manual trigger
+  # ============================================================================
+  terraform-backend:
+    name: Deploy Terraform Backend
+    runs-on: ubuntu-latest
+
+    # Only run if backend files changed or manually triggered
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.head_commit.modified, 'infra/global/terraform-state/')
+
+    permissions:
+      id-token: write      # Required for OIDC authentication with AWS
+      contents: read       # Required to checkout code
+      pull-requests: write # Required to comment on PRs
+
+    defaults:
+      run:
+        working-directory: infra/global/terraform-state
+
+    steps:
+      # Checkout repository code
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      # Set up Terraform CLI
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      # Configure AWS credentials using OIDC
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: arn:aws:iam::195794488914:role/GithubActionsIACRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Verify AWS authentication
+      - name: Verify AWS Identity
+        run: |
+          echo "🔐 Verifying AWS authentication..."
+          aws sts get-caller-identity
+
+      # Initialize Terraform
+      - name: Terraform Init
+        run: |
+          echo "🔧 Initializing Terraform..."
+          terraform init
+
+      # Format check (only on PR)
+      - name: Terraform Format Check
+        if: github.event_name == 'pull_request'
+        run: |
+          echo "📝 Checking Terraform formatting..."
+          terraform fmt -check -recursive
+
+      # Validate configuration
+      - name: Terraform Validate
+        run: |
+          echo "✅ Validating Terraform configuration..."
+          terraform validate
+
+      # Plan changes
+      - name: Terraform Plan
+        id: plan
+        run: |
+          echo "📋 Planning Terraform changes..."
+          terraform plan -out=tfplan
+
+      # Apply changes (only on push to main)
+      - name: Terraform Apply
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          echo "🚀 Applying Terraform changes..."
+          terraform apply -auto-approve tfplan
+
+      # Output results
+      - name: Terraform Output
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          echo "📤 Terraform outputs:"
+          terraform output
+
+  # ============================================================================
+  # Job 2: Plan Dev Environment Infrastructure
+  # Runs on all PRs and pushes to show what would change
+  # ============================================================================
+  terraform-plan-dev:
+    name: Plan Dev Infrastructure
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
+
+    defaults:
+      run:
+        working-directory: infra/envs/dev
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: arn:aws:iam::195794488914:role/GithubActionsIACRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Init
+        run: |
+          echo "🔧 Initializing Terraform for dev environment..."
+          terraform init
+
+      - name: Terraform Format Check
+        id: fmt
+        run: |
+          echo "📝 Checking Terraform formatting..."
+          terraform fmt -check -recursive || echo "::warning::Some files need formatting"
+        continue-on-error: true
+
+      - name: Terraform Validate
+        id: validate
+        run: |
+          echo "✅ Validating Terraform configuration..."
+          terraform validate -no-color
+
+      - name: Terraform Plan
+        id: plan
+        run: |
+          echo "📋 Planning Terraform changes for dev..."
+          terraform plan -no-color -out=tfplan
+        continue-on-error: true
+
+      # Save plan output for PR comment
+      - name: Save Plan Output
+        if: github.event_name == 'pull_request'
+        run: |
+          terraform show -no-color tfplan > plan.txt
+          echo "Plan saved to plan.txt"
+
+      # Comment on PR with plan results
+      - name: Comment PR with Plan
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        env:
+          PLAN: ${{ steps.plan.outputs.stdout }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const output = `#### Terraform Format and Style 🖌\`${{ steps.fmt.outcome }}\`
+            #### Terraform Initialization ⚙️\`${{ steps.init.outcome }}\`
+            #### Terraform Validation 🤖\`${{ steps.validate.outcome }}\`
+            #### Terraform Plan 📖\`${{ steps.plan.outcome }}\`
+
+            <details><summary>Show Plan</summary>
+
+            \`\`\`terraform
+            ${process.env.PLAN}
+            \`\`\`
+
+            </details>
+
+            *Pushed by: @${{ github.actor }}, Action: \`${{ github.event_name }}\`*`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            })
+
+  # ============================================================================
+  # Job 3: Apply Dev Environment Infrastructure
+  # Only runs on push to main after PR is merged
+  # ============================================================================
+  terraform-apply-dev:
+    name: Deploy Dev Infrastructure
+    runs-on: ubuntu-latest
+    needs: [terraform-plan-dev]  # Wait for plan to succeed
+
+    # Only run on push to main (after PR merge)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    permissions:
+      id-token: write
+      contents: read
+
+    defaults:
+      run:
+        working-directory: infra/envs/dev
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: arn:aws:iam::195794488914:role/GithubActionsIACRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Init
+        run: |
+          echo "🔧 Initializing Terraform..."
+          terraform init
+
+      - name: Terraform Plan
+        run: |
+          echo "📋 Creating execution plan..."
+          terraform plan -out=tfplan
+
+      - name: Terraform Apply
+        run: |
+          echo "🚀 Applying Terraform changes to dev environment..."
+          terraform apply -auto-approve tfplan
+
+      - name: Terraform Output
+        id: output
+        run: |
+          echo "📤 Dev environment outputs:"
+          terraform output -json > outputs.json
+          cat outputs.json
+
+      - name: Display Deployment Info
+        run: |
+          echo "✅ Dev infrastructure deployed successfully!"
+          echo "Environment: dev"
+          echo "Region: ${{ env.AWS_REGION }}"
+          terraform output
+
+  # ============================================================================
+  # Job 4: Plan Prod Environment Infrastructure
+  # Only runs on manual trigger with production approval
+  # ============================================================================
+  terraform-plan-prod:
+    name: Plan Prod Infrastructure
+    runs-on: ubuntu-latest
+
+    # Only run on manual dispatch
+    if: github.event_name == 'workflow_dispatch'
+
+    permissions:
+      id-token: write
+      contents: read
+
+    defaults:
+      run:
+        working-directory: infra/envs/prod
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: arn:aws:iam::195794488914:role/GithubActionsIACRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Init
+        run: |
+          echo "🔧 Initializing Terraform for prod environment..."
+          terraform init
+
+      - name: Terraform Validate
+        run: |
+          echo "✅ Validating Terraform configuration..."
+          terraform validate
+
+      - name: Terraform Plan
+        run: |
+          echo "📋 Planning Terraform changes for PRODUCTION..."
+          terraform plan -out=tfplan
+
+      - name: Save Plan
+        run: |
+          terraform show tfplan > prod-plan.txt
+          echo "⚠️ PRODUCTION plan saved. Review before applying!"
