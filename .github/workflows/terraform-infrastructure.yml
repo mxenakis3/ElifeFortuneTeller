@@ -43,7 +43,7 @@ jobs:
 
     defaults:
       run:
-        working-directory: infra/global/terraform-state
+        working-directory: infra/global/terraform-state # Set default working directory
 
     steps:
       # Checkout repository code
@@ -116,6 +116,7 @@ jobs:
   terraform-plan-dev:
     name: Plan Dev Infrastructure
     runs-on: ubuntu-latest
+    needs: [terraform-backend] 
 
     permissions:
       id-token: write
