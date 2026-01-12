@@ -1,0 +1,132 @@
+# Terraform Backend Deployment Workflow
+# Deploys S3 bucket and DynamoDB table for Terraform state storage
+# Only triggers when backend configuration files change
+
+name: Terraform Backend
+
+# Only trigger on changes to backend files
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'infra/global/terraform-state/**'
+      - '.github/workflows/terraform-backend.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'infra/global/terraform-state/**'
+      - '.github/workflows/terraform-backend.yml'
+  workflow_dispatch:  # Allow manual triggering
+
+env:
+  AWS_REGION: us-east-1
+  TF_VERSION: 1.5.0
+
+jobs:
+  deploy-backend:
+    name: Deploy Terraform Backend
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write      # Required for OIDC authentication with AWS
+      contents: read       # Required to checkout code
+      pull-requests: write # Required to comment on PRs
+
+    defaults:
+      run:
+        working-directory: infra/global/terraform-state
+
+    steps:
+      # Checkout repository code
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      # Set up Terraform CLI
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      # Configure AWS credentials using OIDC
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: arn:aws:iam::195794488914:role/GithubActionsIACRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Verify AWS authentication
+      - name: Verify AWS Identity
+        run: |
+          echo "🔐 Verifying AWS authentication..."
+          aws sts get-caller-identity
+
+      # Initialize Terraform (uses local state since we're creating the backend)
+      - name: Terraform Init
+        run: |
+          echo "🔧 Initializing Terraform..."
+          terraform init
+
+      # Format check (only on PR)
+      - name: Terraform Format Check
+        if: github.event_name == 'pull_request'
+        run: |
+          echo "📝 Checking Terraform formatting..."
+          terraform fmt -check -recursive
+
+      # Validate configuration
+      - name: Terraform Validate
+        run: |
+          echo "✅ Validating Terraform configuration..."
+          terraform validate
+
+      # Plan changes
+      - name: Terraform Plan
+        id: plan
+        run: |
+          echo "📋 Planning Terraform changes..."
+          terraform plan -out=tfplan
+
+      # Comment plan on PR (only for pull requests)
+      - name: Comment PR with Plan
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        env:
+          PLAN: ${{ steps.plan.outputs.stdout }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const output = `#### Terraform Backend Plan 🏗️
+
+            <details><summary>Show Plan</summary>
+
+            \`\`\`terraform
+            ${process.env.PLAN}
+            \`\`\`
+
+            </details>
+
+            *Pushed by: @${{ github.actor }}, Action: \`${{ github.event_name }}\`*`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            })
+
+      # Apply changes (only on push to main)
+      - name: Terraform Apply
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          echo "🚀 Applying Terraform changes to create backend..."
+          terraform apply -auto-approve tfplan
+
+      # Output results (only on apply)
+      - name: Terraform Output
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          echo "📤 Backend infrastructure outputs:"
+          terraform output
+          echo ""
+          echo "✅ Terraform backend deployed successfully!"
+          echo "S3 Bucket and DynamoDB table are now ready for use."

@@ -4,16 +4,19 @@
 name: Terraform Infrastructure
 
 # Trigger on changes to infrastructure code or manual dispatch
+# Note: Backend (infra/global/terraform-state/**) handled by terraform-backend.yml
 on:
   push:
     branches: [ main ]
     paths:
-      - 'infra/**'
+      - 'infra/envs/**'
+      - 'infra/modules/**'
       - '.github/workflows/terraform-infrastructure.yml'
   pull_request:
     branches: [ main ]
     paths:
-      - 'infra/**'
+      - 'infra/envs/**'
+      - 'infra/modules/**'
       - '.github/workflows/terraform-infrastructure.yml'
   workflow_dispatch:  # Allows manual triggering from GitHub UI
 
@@ -24,99 +27,13 @@ env:
 
 jobs:
   # ============================================================================
-  # Job 1: Deploy Terraform Backend (S3 + DynamoDB)
-  # This runs FIRST and only when backend files change or on manual trigger
-  # ============================================================================
-  terraform-backend:
-    name: Deploy Terraform Backend
-    runs-on: ubuntu-latest
-
-    # Only run if backend files changed or manually triggered
-    if: |
-      github.event_name == 'workflow_dispatch' ||
-      contains(github.event.head_commit.modified, 'infra/global/terraform-state/')
-
-    permissions:
-      id-token: write      # Required for OIDC authentication with AWS
-      contents: read       # Required to checkout code
-      pull-requests: write # Required to comment on PRs
-
-    defaults:
-      run:
-        working-directory: infra/global/terraform-state # Set default working directory
-
-    steps:
-      # Checkout repository code
-      - name: Checkout Code
-        uses: actions/checkout@v3
-
-      # Set up Terraform CLI
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-
-      # Configure AWS credentials using OIDC
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          role-to-assume: arn:aws:iam::195794488914:role/GithubActionsIACRole
-          aws-region: ${{ env.AWS_REGION }}
-
-      # Verify AWS authentication
-      - name: Verify AWS Identity
-        run: |
-          echo "🔐 Verifying AWS authentication..."
-          aws sts get-caller-identity
-
-      # Initialize Terraform
-      - name: Terraform Init
-        run: |
-          echo "🔧 Initializing Terraform..."
-          terraform init
-
-      # Format check (only on PR)
-      - name: Terraform Format Check
-        if: github.event_name == 'pull_request'
-        run: |
-          echo "📝 Checking Terraform formatting..."
-          terraform fmt -check -recursive
-
-      # Validate configuration
-      - name: Terraform Validate
-        run: |
-          echo "✅ Validating Terraform configuration..."
-          terraform validate
-
-      # Plan changes
-      - name: Terraform Plan
-        id: plan
-        run: |
-          echo "📋 Planning Terraform changes..."
-          terraform plan -out=tfplan
-
-      # Apply changes (only on push to main)
-      - name: Terraform Apply
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: |
-          echo "🚀 Applying Terraform changes..."
-          terraform apply -auto-approve tfplan
-
-      # Output results
-      - name: Terraform Output
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: |
-          echo "📤 Terraform outputs:"
-          terraform output
-
-  # ============================================================================
-  # Job 2: Plan Dev Environment Infrastructure
+  # Job 1: Plan Dev Environment Infrastructure
   # Runs on all PRs and pushes to show what would change
+  # Note: Backend deployment moved to separate terraform-backend.yml workflow
   # ============================================================================
   terraform-plan-dev:
     name: Plan Dev Infrastructure
-    runs-on: ubuntu-latest
-    needs: [terraform-backend] 
+    runs-on: ubuntu-latest 
 
     permissions:
       id-token: write
