@@ -7,7 +7,9 @@
       "Action": [
         "s3:CreateBucket",
         "s3:DeleteBucket",
+        "s3:GetBucketAcl",
         "s3:ListBucket",
+        "s3:GetAccelerateConfiguration",
         "s3:GetObject",
         "s3:PutObject",
         "s3:DeleteObject",
