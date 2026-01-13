@@ -1,6 +1,6 @@
 # Terraform Backend Infrastructure
 # This creates the S3 bucket and DynamoDB table needed to store Terraform state
-# This must be deployed FIRST before any other infrastructure
+# This must be deployed FIRST, before any other infrastructure
 
 terraform {
   required_version = ">= 1.5.0"
