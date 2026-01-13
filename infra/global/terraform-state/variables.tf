@@ -9,7 +9,7 @@ variable "aws_region" {
 variable "state_bucket_name" {
   description = "Name of the S3 bucket for Terraform state storage"
   type        = string
-  default     = "fortune-teller-terraform-state"
+  default     = "fortune-teller-terraform-state-195794488914"
 }
 
 variable "lock_table_name" {
