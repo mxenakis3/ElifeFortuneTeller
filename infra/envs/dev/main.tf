@@ -12,13 +12,13 @@ terraform {
   }
 
   # Backend configuration - uncomment after running terraform-state setup
-  # backend "s3" {
-  #   bucket         = "fortune-teller-terraform-state"
-  #   key            = "dev/terraform.tfstate"
-  #   region         = "us-east-1"
-  #   dynamodb_table = "terraform-state-lock"
-  #   encrypt        = true
-  # }
+  backend "s3" {
+    bucket         = "fortune-teller-terraform-state-195794488914"
+    key            = "dev/terraform.tfstate"
+    region         = "us-east-1"
+    dynamodb_table = "terraform-state-lock"
+    encrypt        = true
+  }
 }
 
 provider "aws" {
