@@ -56,13 +56,44 @@ locals {
 #   name_prefix = local.name_prefix
 # }
 
-# # Cognito User Pool Module
-# module "cognito" {
-#   source = "../../modules/cognito"
-#
-#   environment = var.environment
-#   name_prefix = local.name_prefix
-# }
+# Cognito User Pool Module
+module "cognito" {
+  source = "../../modules/cognito"
+
+  name_prefix = local.name_prefix
+  environment = var.environment
+  aws_region  = var.aws_region
+
+  # Token configuration
+  access_token_validity_hours  = 1
+  id_token_validity_hours      = 1
+  refresh_token_validity_days  = 30
+
+  # OAuth URLs (update with your frontend URLs)
+  callback_urls = [
+    "http://localhost:3000/callback",
+    "http://localhost:5173/callback", # Vite default port
+  ]
+  logout_urls = [
+    "http://localhost:3000",
+    "http://localhost:5173",
+  ]
+
+  # Security (relaxed for dev)
+  deletion_protection              = "INACTIVE"
+  advanced_security_mode           = "AUDIT"
+  mfa_configuration                = "OPTIONAL"
+  challenge_required_on_new_device = false
+
+  # Use Cognito default email
+  email_sending_account = "COGNITO_DEFAULT"
+
+  # Enable hosted UI
+  create_user_pool_domain = true
+  user_pool_domain        = "" # Auto-generated
+
+  tags = local.common_tags
+}
 
 # # Lambda Functions Module
 # module "lambda" {

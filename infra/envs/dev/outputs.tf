@@ -16,15 +16,26 @@
 #   value       = module.frontend.cloudfront_url
 # }
 
-# output "cognito_user_pool_id" {
-#   description = "Cognito User Pool ID"
-#   value       = module.cognito.user_pool_id
-# }
+output "cognito_user_pool_id" {
+  description = "Cognito User Pool ID"
+  value       = module.cognito.user_pool_id
+}
 
-# output "cognito_client_id" {
-#   description = "Cognito User Pool Client ID"
-#   value       = module.cognito.user_pool_client_id
-# }
+output "cognito_client_id" {
+  description = "Cognito User Pool Client ID"
+  value       = module.cognito.user_pool_client_id
+}
+
+output "cognito_hosted_ui_url" {
+  description = "Cognito Hosted UI URL"
+  value       = module.cognito.hosted_ui_url
+}
+
+output "cognito_frontend_config" {
+  description = "Frontend configuration for Cognito"
+  value       = module.cognito.frontend_config
+  sensitive   = false
+}
 
 output "environment" {
   description = "Current environment"
